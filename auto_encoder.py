@@ -1,4 +1,4 @@
-from keras.layers import Convolution1D
+from keras.layers import Convolution1D, MaxPooling1D, UpSampling1D, Dense, AveragePooling1D
 from keras.models import Sequential
 from keras.optimizers import SGD
 from scipy.io import wavfile
@@ -14,6 +14,7 @@ np.random.seed(41125)
 one = wavfile.read("data/train/1.wav")[1]
 max = -np.min(one)
 one = one[::downsample_factor] / max
+one = one[:1100]
 sample_rate = len(one)
 
 x = []
@@ -23,7 +24,8 @@ int_waves.sort()
 for name in int_waves:
     wav = wavfile.read("data/train/%d.wav" % name)[1]
     wav = wav[::downsample_factor] / max
-    wav = np.resize(wav, (1, 1, sample_rate)).astype(np.float32)
+    wav = wav[:len(one)]
+    wav = np.resize(wav, (1, sample_rate, 1)).astype(np.float32)
     x.append(wav)
 
 x = np.vstack(x)
@@ -33,15 +35,21 @@ y = x[indices[:100]]
 x = x[indices[100:]]
 
 model = Sequential()
-model.add(Convolution1D(1024, 5, border_mode='same', activation="tanh", input_shape=(1, sample_rate)))
-model.add(Convolution1D(512, 3, border_mode='same', activation="tanh"))
-model.add(Convolution1D(512, 3, border_mode='same', activation="tanh"))
-model.add(Convolution1D(1024, 3, border_mode='same', activation="tanh"))
-model.add(Convolution1D(sample_rate, 5, border_mode='same', activation="tanh"))
+model.add(Convolution1D(32, 3, border_mode='same', activation="tanh", input_shape=(sample_rate, 1)))
+model.add(AveragePooling1D(pool_length=2, stride=None, border_mode="valid"))
+model.add(Convolution1D(64, 3, border_mode='same', activation="tanh"))
+model.add(AveragePooling1D(pool_length=2, stride=None, border_mode="valid"))
+model.add(Convolution1D(128, 3, border_mode='same', activation="tanh"))
+model.add(UpSampling1D(length=2))
+model.add(Convolution1D(64, 3, border_mode='same', activation="tanh"))
+model.add(UpSampling1D(length=2))
+model.add(Convolution1D(32, 3, border_mode='same', activation="tanh"))
+model.add(Convolution1D(1, 3, border_mode='same', activation="tanh"))
+
 model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
 if train:
     print("NOW FITTING")
-    model.fit(x, x, nb_epoch=100, batch_size=64)
+    model.fit(x, x, nb_epoch=2000, batch_size=64)
     model.save_weights("weights.dat", True)
 
 model.load_weights("weights.dat")
