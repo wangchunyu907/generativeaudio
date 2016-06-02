@@ -3,32 +3,42 @@ from keras.models import Sequential
 from keras.optimizers import SGD
 from scipy.io import wavfile
 import numpy as np
-from scipy.signal import decimate
+from sklearn.metrics import mean_squared_error
+import os
 
+np.random.seed(41125)
 one = wavfile.read("data/train/1.wav")[1]
-two = wavfile.read("data/train/2.wav")[1]
-three = wavfile.read("data/train/3.wav")[1]
-
-one = one[::100]
-two = two[::100]
-three = three[::100]
-
+downsample_factor = 40
+max = np.max(one)
+one = one[::downsample_factor] / max
 sample_rate = len(one)
-wavfile.write("one.wav", sample_rate, one)
 
+x = []
+waves = os.listdir("data/train")
+int_waves = [int(i.split(".")[0]) for i in waves]
+int_waves.sort()
+for name in int_waves:
+    wav = wavfile.read("data/train/%d.wav" % name)[1]
+    wav = wav[::downsample_factor] / max
+    wav = np.resize(wav, (1, 1, sample_rate))
+    x.append(wav)
 
-one = np.resize(one, (1, 1, sample_rate))
-two = np.resize(two, (1, 1, sample_rate))
-three = np.resize(three, (1, 1, sample_rate))
+x = np.vstack(x)
+indices = np.arange(len(x))
+np.random.shuffle(indices)
+y = x[indices[:100]]
+x = x[indices[100:]]
 
 model = Sequential()
-model.add(Convolution1D(256, 3, border_mode='same', activation="relu", input_shape=(1, sample_rate)))
-model.add(Convolution1D(sample_rate, 3, border_mode='same', activation="relu"))
-model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.001, momentum=0.9, nesterov=True))
+model.add(Convolution1D(256, 10, border_mode='same', activation="tanh", input_shape=(1, sample_rate)))
+model.add(Convolution1D(sample_rate, 5, border_mode='same', activation="tanh"))
+model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
 print("NOW FITTING")
-model.fit(one, two, nb_epoch=10000, batch_size=1, verbose=True)
-prediction = model.predict(one)
+model.fit(x, x, nb_epoch=50, batch_size=64)
+model.save_weights("weights.dat", True)
+prediction = model.predict(y)
+error = mean_squared_error(np.resize(y, (len(y), sample_rate)), np.resize(prediction, (len(prediction), sample_rate)))
+print("Test Error: %.4f" % error)
 
-prediction = np.resize(prediction, (sample_rate,))
-
-wavfile.write("prediction.wav", sample_rate, prediction)
+prediction = np.resize(prediction[0], (sample_rate,))
+wavfile.write("prediction_%d.wav" % indices[0], sample_rate, prediction * max)
