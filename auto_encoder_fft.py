@@ -1,8 +1,9 @@
-from keras.layers import Convolution1D, MaxPooling1D, UpSampling1D, Dense, AveragePooling1D
+from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D
 from keras.models import Sequential
 from keras.optimizers import SGD
 from scipy.io import wavfile
 import numpy as np
+from scipy.fftpack import fft
 from sklearn.metrics import mean_squared_error
 import os
 import matplotlib.pyplot as plt
@@ -15,8 +16,15 @@ np.random.seed(41125)
 one = wavfile.read("data/train/1.wav")[1]
 max = -np.min(one)
 one = one[::downsample_factor] / max
-one = one[:4408]
+one = one[:880]
 sample_rate = len(one)
+
+xf = np.linspace(0.0, 1.0/(2.0 * 1.0/880), 880/2)
+one = fft(one[:880])
+fig, ax = plt.subplots()
+ax.plot(xf, 2.0/880 * np.abs(one[:880/2]))
+plt.show()
+
 
 x = []
 waves = os.listdir("data/train")
@@ -51,9 +59,9 @@ model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, ne
 if train:
     print("NOW FITTING")
     model.fit(x, x, nb_epoch=100, batch_size=64)
-    model.save_weights("weights.dat", True)
+    model.save_weights("weights_fft.dat", True)
 
-model.load_weights("weights.dat")
+model.load_weights("weights_fft.dat")
 
 
 predictions = model.predict_on_batch(x)
@@ -61,13 +69,7 @@ error = mean_squared_error(np.resize(x, (len(x), sample_rate)), np.resize(predic
 print("Train Error: %.4f" % error)
 for i in range(len(predictions)):
     prediction = np.resize(predictions[i], (sample_rate,))
-    unnormal = prediction * max
-    wavfile.write("train_predictions/prediction_%d.wav" % (indices[i+100]+1), sample_rate, unnormal)
-    # to_plot = wavfile.read("train_predictions/prediction_%d.wav" % (indices[i+100]+1))[1]
-    # plt.plot(to_plot[:100])
-    # plt.show()
-    # print("hi")
-
+    wavfile.write("train_predictions/prediction_%d.wav" % (indices[i+100]+1), sample_rate, prediction * max)
 
 predictions = model.predict_on_batch(y)
 error = mean_squared_error(np.resize(y, (len(y), sample_rate)), np.resize(predictions, (len(predictions), sample_rate)))
