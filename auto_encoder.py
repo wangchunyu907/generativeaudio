@@ -1,4 +1,4 @@
-from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D
+from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D, MaxPooling1D
 from keras.models import Sequential
 from keras.optimizers import SGD
 from scipy.io import wavfile
@@ -8,14 +8,14 @@ import os
 import matplotlib.pyplot as plt
 
 
-train = False
-downsample_factor = 10
+train = True
+downsample_factor = 43
 np.random.seed(41125)
 
 one = wavfile.read("data/train/1.wav")[1]
 max = -np.min(one)
 one = one[::downsample_factor] / max
-one = one[:4408]
+one = one[:1024]
 sample_rate = len(one)
 
 x = []
@@ -36,24 +36,33 @@ y = x[indices[:100]]
 x = x[indices[100:]]
 
 model = Sequential()
-model.add(Convolution1D(32, 3, border_mode='same', activation="tanh", input_shape=(sample_rate, 1)))
+model.add(Convolution1D(32, 32, border_mode='same', activation="tanh", input_shape=(sample_rate, 1)))
 model.add(AveragePooling1D(pool_length=2, stride=None, border_mode="valid"))
-model.add(Convolution1D(64, 3, border_mode='same', activation="tanh"))
+model.add(Convolution1D(32, 32, border_mode='same', activation="tanh"))
 model.add(AveragePooling1D(pool_length=2, stride=None, border_mode="valid"))
-model.add(Convolution1D(128, 3, border_mode='same', activation="tanh"))
+model.add(Convolution1D(32, 16, border_mode='same', activation="tanh"))
+model.add(AveragePooling1D(pool_length=2, stride=None, border_mode="valid"))
+model.add(Convolution1D(1, 8, border_mode='same', activation="tanh"))
+# model.add(MaxPooling1D(pool_length=2, stride=None, border_mode="valid"))
+#
+# model.add(Convolution1D(4, 3, border_mode='same', activation="tanh"))
+# model.add(UpSampling1D(length=2))
+# model.add(Convolution1D(2, 3, border_mode='same', activation="tanh"))
 model.add(UpSampling1D(length=2))
-model.add(Convolution1D(64, 3, border_mode='same', activation="tanh"))
+model.add(Convolution1D(32, 32, border_mode='same', activation="tanh"))
 model.add(UpSampling1D(length=2))
-model.add(Convolution1D(32, 3, border_mode='same', activation="tanh"))
-model.add(Convolution1D(1, 3, border_mode='same', activation="tanh"))
+model.add(Convolution1D(32, 32, border_mode='same', activation="tanh"))
+model.add(UpSampling1D(length=2))
+model.add(Convolution1D(32, 32, border_mode='same', activation="tanh"))
+model.add(Convolution1D(1, 32, border_mode='same', activation="tanh"))
 
 model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
 if train:
     print("NOW FITTING")
-    model.fit(x, x, nb_epoch=100, batch_size=64)
-    model.save_weights("weights.dat", True)
+    model.fit(x, x, nb_epoch=5000, batch_size=64)
+    model.save_weights("weights_1.dat", True)
 
-model.load_weights("weights.dat")
+model.load_weights("weights_1.dat")
 
 
 predictions = model.predict_on_batch(x)
