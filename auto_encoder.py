@@ -1,4 +1,4 @@
-from keras.layers import Convolution1D, MaxPooling1D, UpSampling1D, Dense, AveragePooling1D
+from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D
 from keras.models import Sequential
 from keras.optimizers import SGD
 from scipy.io import wavfile
@@ -62,6 +62,7 @@ print("Train Error: %.4f" % error)
 for i in range(len(predictions)):
     prediction = np.resize(predictions[i], (sample_rate,))
     unnormal = prediction * max
+    unnormal = unnormal.astype(np.int16)
     wavfile.write("train_predictions/prediction_%d.wav" % (indices[i+100]+1), sample_rate, unnormal)
     # to_plot = wavfile.read("train_predictions/prediction_%d.wav" % (indices[i+100]+1))[1]
     # plt.plot(to_plot[:100])
@@ -75,7 +76,10 @@ print("Test Error: %.4f" % error)
 
 for i in range(len(predictions)):
     prediction = np.resize(predictions[i], (sample_rate,))
-    wavfile.write("predictions/prediction_%d.wav" % (indices[i]+1), sample_rate, prediction * max)
+    unnormal = prediction * max
+    unnormal = unnormal.astype(np.int16)
+    wavfile.write("predictions/prediction_%d.wav" % (indices[i]+1), sample_rate, unnormal)
+
 # one = wavfile.read("data/train/381.wav")[1]
 # plt.plot(np.linspace(1,100))
 # plt.plot(y[0][:500] * max)
