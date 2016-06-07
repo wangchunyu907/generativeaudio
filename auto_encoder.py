@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-train = True
+train = False
 downsample_factor = 43
 np.random.seed(41125)
 
