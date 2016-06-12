@@ -10,28 +10,35 @@ from scipy.optimize import fmin_l_bfgs_b
 from sklearn.metrics import mean_squared_error
 import theano.tensor as T
 import theano
+from scipy.signal import resample
 
 print("starting")
 activation = "tanh"
 init = "glorot_uniform"
-filter_size = 256
 
-sample_rate = 1024
-downsample_factor = 43
+sample_rate = 11025
+filter_size = sample_rate / 2
+downsample_factor = 2
 np.random.seed(41125)
 content_factor = 0.1
 style_factor = 1.0
-total_samples = sample_rate*5
+total_samples = sample_rate * 14
 
 # Load style sound and sample and normalize it.
-rate, style = wavfile.read('data/sines.wav')
-amplitude = -np.min(style)
-style = style[::downsample_factor] / amplitude
-style = style[:total_samples]
+rate, style = wavfile.read('data/5.wav')
+style = resample(style, total_samples)
+wavfile.write('output/input.wav', sample_rate, style)
+amplitude = np.max(np.abs(style))
+# style = style[::downsample_factor] / amplitude
+# style = style[:total_samples]
 # sample_rate = rate / downsample_factor
+
+style /= amplitude
 
 # Noise input.
 noise = np.random.rand(total_samples).astype(np.float32)
+noise = noise * 2 - 1
+noise /= amplitude
 # noise = style.astype(np.float32)
 unnormal_noise = noise * amplitude
 wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
@@ -43,17 +50,19 @@ style = np.reshape(style, (1, total_samples, 1))
 print("building model")
 # Create content network.
 inputs = Input(shape=(total_samples, 1))
-layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(inputs)
-layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(80, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
-layers = Convolution1D(80, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(80, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(112, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
-layers = Convolution1D(112, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(112, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(176, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
-layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
-layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(inputs)
+# layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(80, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
+# layers = Convolution1D(80, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(80, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(112, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
+# layers = Convolution1D(112, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(112, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(176, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
+# layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
+# layers = Convolution1D(16, filter_size, border_mode='same', activation=activation, init=init)(inputs)
+layers = Convolution1D(128, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 
 model = Model(input=inputs, output=layers)
 model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
@@ -62,13 +71,30 @@ X = Input(shape=(total_samples, 1))
 # predict = theano.function([model.layers[0].input], [model.layers[-1].output], allow_input_downcast=True)
 # xc = predict(noise)
 # xs = predict(style)
-xc = model.predict(noise)
+# xc = model.predict(noise)
 xs = model.predict(style)
 xg = model(X)
-loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
-    (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
+xs_gram = 1.0 * np.dot(xs[0].T, xs[0]) / total_samples
+xg_gram = 1.0 * T.dot(xg[0].T, xg[0]) / total_samples
+# loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
+#     (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
+loss = style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
+# gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 loss_function = theano.function([X], loss, allow_input_downcast=True)
+iteration_count = 0
+
+
+def optimization_callback(xk):
+    global iteration_count
+    if iteration_count % 10 == 0:
+        current_x = np.copy(xk)
+        current_x *= amplitude
+        wavfile.write('output/output%d.wav' % iteration_count, sample_rate, current_x.astype(np.int16))
+    # print(xk)
+    # print(loss_function(np.reshape(xk, (1, total_samples, 1))))
+    # print(gradient_function(np.reshape(xk, (1, total_samples, 1))))
+    iteration_count += 1
 
 
 def evaluate(Xn):
@@ -110,11 +136,14 @@ y, Vn, info = scipy.optimize.fmin_l_bfgs_b(
     evaluate,
     noise.astype(np.float64).flatten(),
     bounds=bounds,
-    factr=0.0, pgtol=0.0,  # Disable automatic termination, set low threshold.
-    m=5,  # Maximum correlations kept in memory by algorithm.
-    maxfun=100,  # Limit number of calls to evaluate().
-    iprint=1)
+    factr=0.0, pgtol=0.0,
+    maxfun=3000,  # Limit number of calls to evaluate().
+    iprint=1,
+    approx_grad=False,
+    callback=optimization_callback)
+
 print(y)
+
 y *= amplitude
-wavfile.write('output.wav', sample_rate, y.astype(np.int16))
+wavfile.write('output/output.wav', sample_rate, y.astype(np.int16))
 print("done.")
