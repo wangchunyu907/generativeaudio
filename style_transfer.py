@@ -19,32 +19,30 @@ filter_size = 256
 sample_rate = 1024
 downsample_factor = 43
 np.random.seed(41125)
-content_factor = 1.0
+content_factor = 0.1
 style_factor = 1.0
+total_samples = sample_rate*5
 
 # Load style sound and sample and normalize it.
 rate, style = wavfile.read('data/sines.wav')
 amplitude = -np.min(style)
 style = style[::downsample_factor] / amplitude
-style = style[:sample_rate]
+style = style[:total_samples]
 # sample_rate = rate / downsample_factor
 
 # Noise input.
-noise = np.random.rand(len(style)).astype(np.float32)
+noise = np.random.rand(total_samples).astype(np.float32)
 # noise = style.astype(np.float32)
 unnormal_noise = noise * amplitude
 wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
-noise = np.reshape(noise, (1, sample_rate, 1))
-# The sound array that we want to optimize.
-x = np.random.rand(len(style)).astype(np.float32)
-x = np.reshape(x, (1, sample_rate, 1))
+noise = np.reshape(noise, (1, total_samples, 1))
 
 style = style.astype(np.float32)
-style = np.reshape(style, (1, sample_rate, 1))
+style = np.reshape(style, (1, total_samples, 1))
 
 print("building model")
 # Create content network.
-inputs = Input(shape=(sample_rate, 1))
+inputs = Input(shape=(total_samples, 1))
 layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(layers)
 layers = Convolution1D(80, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
@@ -60,7 +58,7 @@ layers = Convolution1D(176, filter_size, border_mode='same', activation=activati
 model = Model(input=inputs, output=layers)
 model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
 
-X = Input(shape=(sample_rate, 1))
+X = Input(shape=(total_samples, 1))
 # predict = theano.function([model.layers[0].input], [model.layers[-1].output], allow_input_downcast=True)
 # xc = predict(noise)
 # xs = predict(style)
@@ -68,7 +66,7 @@ xc = model.predict(noise)
 xs = model.predict(style)
 xg = model(X)
 loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
-    (T.dot(xg[0], xg[0].T) - T.dot(xs[0], xs[0].T)) ** 2)
+    (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
 gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 loss_function = theano.function([X], loss, allow_input_downcast=True)
 
@@ -93,14 +91,14 @@ def evaluate(Xn):
     #
     # total_loss = content_loss + style_loss
 
-    current_x = np.reshape(Xn, (1, sample_rate, 1)).astype(np.float32)
+    current_x = np.reshape(Xn, (1, total_samples, 1)).astype(np.float32)
     gradients = gradient_function(current_x)
     total_loss = loss_function(current_x)
     return total_loss.astype(np.float64), gradients.astype(np.float64)
 
 
 bounds = [[-1.0, 1.0]]
-bounds = np.repeat(bounds, sample_rate, axis=0)
+bounds = np.repeat(bounds, total_samples, axis=0)
 
 # print(scipy.optimize.check_grad(loss_function, gradient_function, x))
 print("optimizing")
@@ -110,7 +108,7 @@ print("optimizing")
 # y = result.x
 y, Vn, info = scipy.optimize.fmin_l_bfgs_b(
     evaluate,
-    x.astype(np.float64).flatten(),
+    noise.astype(np.float64).flatten(),
     bounds=bounds,
     factr=0.0, pgtol=0.0,  # Disable automatic termination, set low threshold.
     m=5,  # Maximum correlations kept in memory by algorithm.
