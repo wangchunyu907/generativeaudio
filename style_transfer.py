@@ -1,6 +1,6 @@
 import scipy
 from keras.engine import Input
-from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D, MaxPooling1D, LeakyReLU, ELU
+from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D, MaxPooling1D
 from keras.models import Model
 from keras.optimizers import SGD
 # from  keras import backend as K
@@ -16,38 +16,51 @@ print("starting")
 activation = "relu"
 init = "glorot_uniform"
 
-sample_rate = 4096
+sample_rate = 11025
 filter_size = sample_rate / 5
 downsample_factor = 4
 np.random.seed(41126)
-content_factor = 0.0
-style_factor = 10.0e7
-smoothness_factor = 10.0e3
+content_factor = 1.0
+style_factor = 1.0
 # total_samples = sample_rate * 5
 
+rate, noise = wavfile.read('data/mariomain.wav')
+print('loaded content')
+total_samples = int(len(noise)/rate) * sample_rate
+noise = resample(noise, total_samples)
+amplitude = np.max(np.abs(noise))
+wavfile.write('output/content.wav', sample_rate, noise.astype(np.int16))
+noise /= amplitude
+
 # Load style sound and sample and normalize it.
-rate, style = wavfile.read('data/5.wav')
-total_samples = int(len(style) / rate) * sample_rate
-style = resample(style, total_samples)
+rate, style = wavfile.read('data/mario.wav')
+print('loaded style')
+total_samples2 = int(len(style)/rate) * sample_rate
+style = resample(style, total_samples2)
 wavfile.write('output/input.wav', sample_rate, style.astype(np.int16))
 amplitude = np.max(np.abs(style))
 # style = style[::downsample_factor] / amplitude
 # style = style[:total_samples]
 # sample_rate = rate / downsample_factor
 
+noise = noise[:len(style)]
+total_samples = total_samples2
+
 style /= amplitude
 
 # Noise input.
-noise = np.random.rand(total_samples).astype(np.float32)
-noise = noise * 2 - 1
-noise /= amplitude
-# noise = style.astype(np.float32)
-unnormal_noise = noise * amplitude
-wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
-noise = np.reshape(noise, (1, total_samples, 1))
+#noise = np.random.rand(total_samples).astype(np.float32)
+#noise = noise * 2 - 1
+## noise /= amplitude
+## noise = style.astype(np.float32)
+#unnormal_noise = noise * amplitude
+#wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
+#noise = np.reshape(noise, (1, total_samples, 1))
 
 style = style.astype(np.float32)
 style = np.reshape(style, (1, total_samples, 1))
+noise = noise.astype(np.float32)
+noise = np.reshape(noise, (1, total_samples, 1))
 models = []
 print("building model")
 # Create content network.
@@ -65,11 +78,11 @@ print("building model")
 # layers = Convolution1D(16, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 
 filters = np.array(
-    [sample_rate / 8, sample_rate / 16, sample_rate / 32])
+    [sample_rate, sample_rate / 2, sample_rate / 4, sample_rate / 8, sample_rate / 16, sample_rate / 32,
+     sample_rate / 64, sample_rate / 128])
 for f in filters:
     inputs = Input(shape=(total_samples, 1))
     layers = Convolution1D(512, f, border_mode='same', activation=activation, init=init, bias=False)(inputs)
-    # layers = ELU()(layers)
 
     model = Model(input=inputs, output=layers)
     model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
@@ -88,8 +101,8 @@ for model in models:
     xg_gram = 1.0 * T.dot(T.transpose(xg[0]), xg[0]) / total_samples
     # loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
     #     (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
-    loss += style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
-    loss += smoothness_factor * T.mean(((xg[:, :-1, :] - xg[:, 1:, :]) ** 2))
+    loss += content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
+     loss += smoothness_factor * T.mean(((xg[:, :-1, :] - xg[:, 1:, :]) ** 2))
 # gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 loss /= len(models)
 gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
