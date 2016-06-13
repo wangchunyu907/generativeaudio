@@ -17,10 +17,10 @@ activation = "tanh"
 init = "glorot_uniform"
 
 sample_rate = 11025
-filter_size = sample_rate / 2
-downsample_factor = 2
-np.random.seed(41125)
-content_factor = 0.1
+filter_size = sample_rate / 5
+downsample_factor = 4
+np.random.seed(41126)
+content_factor = 1.0
 style_factor = 1.0
 total_samples = sample_rate * 14
 
@@ -38,7 +38,7 @@ style /= amplitude
 # Noise input.
 noise = np.random.rand(total_samples).astype(np.float32)
 noise = noise * 2 - 1
-noise /= amplitude
+# noise /= amplitude
 # noise = style.astype(np.float32)
 unnormal_noise = noise * amplitude
 wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
@@ -46,10 +46,9 @@ noise = np.reshape(noise, (1, total_samples, 1))
 
 style = style.astype(np.float32)
 style = np.reshape(style, (1, total_samples, 1))
-
+models = []
 print("building model")
 # Create content network.
-inputs = Input(shape=(total_samples, 1))
 # layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 # layers = Convolution1D(48, filter_size, border_mode='same', activation=activation, init=init)(layers)
 # layers = Convolution1D(80, 2, border_mode='valid', activation=activation, init=init, subsample_length=2)(layers)
@@ -62,24 +61,33 @@ inputs = Input(shape=(total_samples, 1))
 # layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
 # layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
 # layers = Convolution1D(16, filter_size, border_mode='same', activation=activation, init=init)(inputs)
-layers = Convolution1D(128, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 
-model = Model(input=inputs, output=layers)
-model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
+
+for f in [3 * sample_rate / 2, sample_rate, 2 * sample_rate / 3, sample_rate / 2, sample_rate / 3, sample_rate / 4,
+          sample_rate / 5, sample_rate / 6]:
+    inputs = Input(shape=(total_samples, 1))
+    layers = Convolution1D(128, f, border_mode='same', activation=activation, init=init)(inputs)
+
+    model = Model(input=inputs, output=layers)
+    model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
+    models.append(model)
 
 X = Input(shape=(total_samples, 1))
 # predict = theano.function([model.layers[0].input], [model.layers[-1].output], allow_input_downcast=True)
 # xc = predict(noise)
 # xs = predict(style)
-# xc = model.predict(noise)
-xs = model.predict(style)
-xg = model(X)
-xs_gram = 1.0 * np.dot(xs[0].T, xs[0]) / total_samples
-xg_gram = 1.0 * T.dot(xg[0].T, xg[0]) / total_samples
-# loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
-#     (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
-loss = style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
+loss = 0
+for model in models:
+    xc = model.predict(noise)
+    xs = model.predict(style)
+    xg = model(X)
+    xs_gram = 1.0 * np.dot(xs[0].T, xs[0]) / total_samples
+    xg_gram = 1.0 * T.dot(T.transpose(xg[0]), xg[0]) / total_samples
+    # loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
+    #     (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
+    loss += style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
 # gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
+loss /= len(models)
 gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 loss_function = theano.function([X], loss, allow_input_downcast=True)
 iteration_count = 0
