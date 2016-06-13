@@ -13,7 +13,7 @@ import theano
 from scipy.signal import resample
 
 print("starting")
-activation = "tanh"
+activation = "relu"
 init = "glorot_uniform"
 
 sample_rate = 11025
@@ -22,10 +22,11 @@ downsample_factor = 4
 np.random.seed(41126)
 content_factor = 1.0
 style_factor = 1.0
-total_samples = sample_rate * 14
+# total_samples = sample_rate * 5
 
 # Load style sound and sample and normalize it.
-rate, style = wavfile.read('data/5.wav')
+rate, style = wavfile.read('data/6.wav')
+total_samples = len(style)/rate * sample_rate
 style = resample(style, total_samples)
 wavfile.write('output/input.wav', sample_rate, style)
 amplitude = np.max(np.abs(style))
@@ -62,11 +63,12 @@ print("building model")
 # layers = Convolution1D(176, filter_size, border_mode='same', activation=activation, init=init)(layers)
 # layers = Convolution1D(16, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 
-
-for f in [3 * sample_rate / 2, sample_rate, 2 * sample_rate / 3, sample_rate / 2, sample_rate / 3, sample_rate / 4,
-          sample_rate / 5, sample_rate / 6]:
+filters = np.array(
+    [sample_rate, sample_rate / 2, sample_rate / 4, sample_rate / 8, sample_rate / 16, sample_rate / 32,
+     sample_rate / 64, sample_rate / 128])
+for f in filters:
     inputs = Input(shape=(total_samples, 1))
-    layers = Convolution1D(128, f, border_mode='same', activation=activation, init=init)(inputs)
+    layers = Convolution1D(128, f, border_mode='same', activation=activation, init=init, bias=False)(inputs)
 
     model = Model(input=inputs, output=layers)
     model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
