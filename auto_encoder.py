@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-train = False
+train = True
 downsample_factor = 43
 np.random.seed(41125)
 
@@ -79,18 +79,17 @@ for i in range(len(predictions)):
     # print("hi")
 
 
-predictions = model.predict_on_batch(y)
-error = mean_squared_error(np.resize(y, (len(y), sample_rate)), np.resize(predictions, (len(predictions), sample_rate)))
+test_predictions = model.predict_on_batch(y)
+error = mean_squared_error(np.resize(y, (len(y), sample_rate)), np.resize(predictions, (len(test_predictions), sample_rate)))
 print("Test Error: %.4f" % error)
 
-for i in range(len(predictions)):
-    prediction = np.resize(predictions[i], (sample_rate,))
+for i in range(len(test_predictions)):
+    prediction = np.resize(test_predictions[i], (sample_rate,))
     unnormal = prediction * max
     unnormal = unnormal.astype(np.int16)
     wavfile.write("predictions/prediction_%d.wav" % (indices[i]+1), sample_rate, unnormal)
 
-# one = wavfile.read("data/train/381.wav")[1]
-# plt.plot(np.linspace(1,100))
-# plt.plot(y[0][:500] * max)
-# plt.plot(one[:5000])
-# plt.show()
+one = wavfile.read("data/train/381.wav")[1][::43]
+plt.plot(test_predictions[0][:20] * max)
+plt.plot(one[:20])
+plt.show()

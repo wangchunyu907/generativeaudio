@@ -1,6 +1,6 @@
 import scipy
 from keras.engine import Input
-from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D, MaxPooling1D
+from keras.layers import Convolution1D, UpSampling1D, AveragePooling1D, MaxPooling1D, LeakyReLU, ELU
 from keras.models import Model
 from keras.optimizers import SGD
 # from  keras import backend as K
@@ -16,19 +16,20 @@ print("starting")
 activation = "relu"
 init = "glorot_uniform"
 
-sample_rate = 11025
+sample_rate = 4096
 filter_size = sample_rate / 5
 downsample_factor = 4
 np.random.seed(41126)
-content_factor = 1.0
-style_factor = 1.0
+content_factor = 0.0
+style_factor = 10.0e7
+smoothness_factor = 10.0e3
 # total_samples = sample_rate * 5
 
 # Load style sound and sample and normalize it.
-rate, style = wavfile.read('data/6.wav')
-total_samples = len(style)/rate * sample_rate
+rate, style = wavfile.read('data/5.wav')
+total_samples = int(len(style) / rate) * sample_rate
 style = resample(style, total_samples)
-wavfile.write('output/input.wav', sample_rate, style)
+wavfile.write('output/input.wav', sample_rate, style.astype(np.int16))
 amplitude = np.max(np.abs(style))
 # style = style[::downsample_factor] / amplitude
 # style = style[:total_samples]
@@ -39,7 +40,7 @@ style /= amplitude
 # Noise input.
 noise = np.random.rand(total_samples).astype(np.float32)
 noise = noise * 2 - 1
-# noise /= amplitude
+noise /= amplitude
 # noise = style.astype(np.float32)
 unnormal_noise = noise * amplitude
 wavfile.write('noise.wav', sample_rate, unnormal_noise.astype(np.int16))
@@ -64,11 +65,11 @@ print("building model")
 # layers = Convolution1D(16, filter_size, border_mode='same', activation=activation, init=init)(inputs)
 
 filters = np.array(
-    [sample_rate, sample_rate / 2, sample_rate / 4, sample_rate / 8, sample_rate / 16, sample_rate / 32,
-     sample_rate / 64, sample_rate / 128])
+    [sample_rate / 8, sample_rate / 16, sample_rate / 32])
 for f in filters:
     inputs = Input(shape=(total_samples, 1))
-    layers = Convolution1D(128, f, border_mode='same', activation=activation, init=init, bias=False)(inputs)
+    layers = Convolution1D(512, f, border_mode='same', activation=activation, init=init, bias=False)(inputs)
+    # layers = ELU()(layers)
 
     model = Model(input=inputs, output=layers)
     model.compile(loss='mean_squared_error', optimizer=SGD(lr=0.01, momentum=0.9, nesterov=True))
@@ -88,6 +89,7 @@ for model in models:
     # loss = content_factor * T.mean((xg[0] - xc[0]) ** 2) + style_factor * T.mean(
     #     (T.dot(xg[0], T.transpose(xg[0])) - np.dot(xs[0], xs[0].T)) ** 2)
     loss += style_factor * T.sum((xs_gram - xg_gram) ** 2) / T.sum(xs_gram ** 2)  # * 10e7
+    loss += smoothness_factor * T.mean(((xg[:, :-1, :] - xg[:, 1:, :]) ** 2))
 # gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
 loss /= len(models)
 gradient_function = theano.function([X], T.flatten(T.grad(loss, X)), allow_input_downcast=True)
@@ -147,7 +149,7 @@ y, Vn, info = scipy.optimize.fmin_l_bfgs_b(
     noise.astype(np.float64).flatten(),
     bounds=bounds,
     factr=0.0, pgtol=0.0,
-    maxfun=3000,  # Limit number of calls to evaluate().
+    maxfun=30000,  # Limit number of calls to evaluate().
     iprint=1,
     approx_grad=False,
     callback=optimization_callback)
