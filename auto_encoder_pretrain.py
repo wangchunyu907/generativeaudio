@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 train = True
 sample_rate = 4096
 np.random.seed(41126)
-seconds = 5
+seconds = 20
 total_samples = sample_rate * seconds
 amplitude = 0
 
