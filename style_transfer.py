@@ -24,6 +24,7 @@ smoothness_factor = 1e-5
 
 total_samples = sample_rate * 20
 rate, noise = wavfile.read('data/mariomain.wav')
+noise = noise[rate*5 : rate*10]
 print('loaded content')
 noise = resample(noise, total_samples)
 db = 20 * np.log10(noise)
@@ -64,10 +65,13 @@ filters = np.array(
     [sample_rate / 8]).astype(np.int)
 for f in filters:
     inputs = Input(shape=(None, 1))
-    layers = Convolution1D(512, f, border_mode='same', activation=activation, init=init, bias=False)(inputs)
+    layers = Convolution1D(512, 256, border_mode='same', activation=activation, init=init)(inputs)
+    decode = Convolution1D(1, 256, border_mode='same', activation="tanh", init=init)(layers)
 
-    model = Model(input=inputs, output=layers)
-    models.append(model)
+    model = Model(input=inputs, output=decode)
+    encoder_model = Model(input=inputs, output=layers)
+    model.load_weights("weights_pre.dat")
+    models.append(encoder_model)
 
 X = Input(shape=(total_samples, 1))
 
@@ -89,15 +93,15 @@ for model in models:
 
     xc = current_xc[0]
     xg = current_xg[0]
-    xs_gram = 0
+    xs_gram = 1
     for style in styles:
         current_xs = model.predict(style)
         xs = current_xs[0]
-        xs_gram += 1.0 * T.dot(xs.T, xs) / style.shape[1]
-    xs_gram /= len(styles)
+        xs_gram *= 1.0 * np.dot(xs.T, xs) / style.shape[1]
+    xs_gram **= 1.0 / len(styles)
     xg_gram = 1.0 * T.dot(xg.T, xg) / total_samples
 
-    loss += content_factor * T.mean(T.square(xg - xc))
+    # loss += content_factor * T.mean(T.square(xg - xc))
     loss += style_factor * T.sum(T.square(xs_gram - xg_gram)) / T.sum(
         T.square(xs_gram))
 
