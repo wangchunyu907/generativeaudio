@@ -23,7 +23,7 @@ style_factor = 1.0
 smoothness_factor = 1e-5
 
 total_samples = sample_rate * 20
-rate, noise = wavfile.read('data/queen.wav')
+rate, noise = wavfile.read('data/star.wav')
 # noise = noise[rate * 0: rate * 35]
 print('loaded content')
 noise = resample(noise, total_samples)
@@ -48,7 +48,7 @@ wavfile.write('output/x.wav', sample_rate, unnormal_noise.astype(np.int16))
 
 styles = []
 for i in range(1, 2):
-    rate, style = wavfile.read('data/mario.wav')
+    rate, style = wavfile.read('data/cat.wav')
     # style = style[rate * 0: rate * 35]
     total_samples2 = int(len(style) / rate) * sample_rate
     style = resample(style, total_samples2)
